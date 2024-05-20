@@ -1,0 +1,153 @@
+import tkinter as tk
+from tkinter import messagebox
+import random
+import webbrowser
+import datetime
+import os
+
+
+class AddictionHelperApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Let's Overcome Addiction Together!")
+        self.data_file = 'sober_days.txt'
+
+        # Sobriety Tracker
+        tk.Label(root, text="Enter the number of days you've been addiction-free:").pack(pady=10)
+        self.days_entry = tk.Entry(root, width=10)
+        self.days_entry.pack(pady=5)
+
+        self.update_button = tk.Button(root, text="Update Progress", command=self.update_progress)
+        self.update_button.pack(pady=10)
+
+        self.quote_button = tk.Button(root, text="Show Motivational Quote", command=self.show_quote)
+        self.quote_button.pack(pady=10)
+
+        self.resources_button = tk.Button(root, text="Visit Resources", command=self.open_resources)
+        self.resources_button.pack(pady=10)
+
+        self.view_progress_button = tk.Button(root, text="View Progress", command=self.view_progress)
+        self.view_progress_button.pack(pady=10)
+
+        self.restart_button = tk.Button(root, text="I relapsed, let's restart", command=self.reset_progress)
+        self.restart_button.pack(pady=10)
+
+        # Motivational Quotes List
+        self.quotes = [
+            "Fall seven times, stand up eight.",
+            "The best way out is always through.",
+            "Healing is not linear.",
+            "Change your thoughts and you change your world.",
+            "Every moment of resistance to temptation is a victory.",
+            "Recovery is about progression, not perfection.",
+            "One day at a time.",
+            "Believe you can and you're halfway there.",
+            "Recovery is something that you have to work on every single day.",
+            "It's never too late to be what you might have been.",
+            "Don't let the past steal your present.",
+            "What lies behind us and what lies before us are tiny matters compared to what lies within us.",
+            "The only journey is the journey within.",
+            "Remember just because you hit bottom doesn't mean you have to stay there.",
+            "We cannot solve problems with the kind of thinking we employed when we came up with them.",
+            "Not feeling is no replacement for reality. Your problems today are still your problems tomorrow.",
+            "Happiness is where we find it, but rarely where we seek it.",
+            "Recovery is not for people who need it, it's for people who want it.",
+            "You were never created to live depressed, defeated, guilty, condemned, ashamed or unworthy. You were created to be victorious.",
+            "Sometimes you’ve just got to give yourself what you wish someone else would give you.",
+            "Though no one can go back and make a brand new start, anyone can start from now and make a brand new ending.",
+            "Rock bottom became the solid foundation on which I rebuilt my life.",
+            "Sometimes you can only find Heaven by slowly backing away from Hell.",
+            "Life doesn't get easier or more forgiving, we get stronger and more resilient.",
+            "When everything seems like an uphill struggle, just think of the view from the top.",
+            "Addiction cannot defeat me if I’m continuously striving to be better.",
+            "Rising from the ashes, I am born anew.",
+            "There’s no need to look back at what you have lost. Forward movement is the only direction.",
+            "Recovery is an acceptance that your life is in shambles and you have to change it.",
+            "I understood myself only after I destroyed myself. And only in the process of fixing myself, did I know who I really was.",
+            "Strength does not come from physical capacity. It comes from an indomitable will.",
+            "Recovery is terrifying when you don’t know who you are without your addiction, but it's even more terrifying when you realize who you are with it.",
+            "You don’t have to see the whole staircase, just take the first step.",
+            "Every day is a second chance.",
+            "Forget what hurt you but never forget what it taught you.",
+            "Pain is temporary. Quitting lasts forever.",
+            "The greatest mistake you can make in life is to be continually fearing you will make one.",
+            "Start where you are, use what you have, do what you can.",
+            "Courage isn't having the strength to go on - it is going on when you don't have strength.",
+            "Sometimes the smallest step in the right direction ends up being the biggest step of your life.",
+            "Don’t count the days, make the days count.",
+            "If you can quit for a day, you can quit for a lifetime.",
+            "It always seems impossible until it’s done.",
+            "Let your faith be bigger than your fears.",
+            "Your best days are ahead of you. The movie starts when the guy gets sober and puts his life back together; it doesn't end there.",
+            "Hardships often prepare ordinary people for an extraordinary destiny.",
+            "Recovery is not a race. You don’t have to feel guilty if it takes you longer than you thought it would.",
+            "What you avoid or ignore will slow your recovery; confront your challenges head-on.",
+            "You are stronger than you think. Use your strength to come out of the darkness.",
+            "Focus on where you want to go, not where you currently are."
+        ]
+
+        # Load saved sober days if available
+        self.load_sober_days()
+
+    def load_sober_days(self):
+        if os.path.exists(self.data_file):
+            with open(self.data_file, 'r') as file:
+                data = file.read().split(',')
+                last_recorded_date = datetime.datetime.strptime(data[0], '%Y-%m-%d').date()
+                recorded_sober_days = int(data[1])
+                today = datetime.date.today()
+                days_since_record = (today - last_recorded_date).days
+                current_sober_days = recorded_sober_days + days_since_record
+                self.days_entry.insert(0, str(current_sober_days))
+                self.disable_inputs()
+        else:
+            self.days_entry.insert(0, '0')
+
+    def update_progress(self):
+        days = self.days_entry.get()
+        today = datetime.date.today()
+        with open(self.data_file, 'w') as file:
+            file.write(f"{today},{days}")
+        messagebox.showinfo("Progress Updated", f"Great! You've been addiction-free for {days} days!")
+        self.disable_inputs()
+
+    def show_quote(self):
+        quote = random.choice(self.quotes)
+        messagebox.showinfo("Motivational Quote", quote)
+
+    def open_resources(self):
+        webbrowser.open('http://www.helpguide.org/articles/addictions/overcoming-drug-addiction.htm')
+        webbrowser.open('https://www.therecoveryvillage.com/')
+        webbrowser.open('https://refugerecovery.org/')
+        webbrowser.open('https://recoverydharma.org/')
+
+    def reset_progress(self):
+        self.days_entry.delete(0, tk.END)
+        self.days_entry.insert(0, '0')
+        today = datetime.date.today()
+        with open(self.data_file, 'w') as file:
+            file.write(f"{today},0")
+        messagebox.showinfo("Reset Successful", "Your progress has been reset. You can start fresh today!")
+        self.enable_inputs()
+
+    def view_progress(self):
+        days = self.days_entry.get()
+        messagebox.showinfo("View Progress", f"You have been addiction-free for {days} days!")
+
+    def disable_inputs(self):
+        self.days_entry.config(state='disabled')
+        self.update_button.config(state='disabled')
+
+    def enable_inputs(self):
+        self.days_entry.config(state='normal')
+        self.update_button.config(state='normal')
+
+
+def main():
+    root = tk.Tk()
+    app = AddictionHelperApp(root)
+    root.mainloop()
+
+
+if __name__ == "__main__":
+    main()
