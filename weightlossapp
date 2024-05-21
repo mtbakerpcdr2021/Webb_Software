@@ -1,0 +1,266 @@
+import time
+import re
+import codecs
+
+
+class FoodItem(object):
+    """A food item. Food items have calorie amounts, servings, a servings unit, grams of protein, carbohydrates and fats."""
+    def __init__(self, name, servings, servingsunit, calories, protein, carbs, fats):
+        self.name = name
+        self.servings = servings
+        self.servingsunit = servingsunit
+        self.calories = calories
+        self.protein = protein
+        self.carbs = carbs
+        self.fats = fats
+
+    def __hash__(self):
+        return hash((self.name))
+
+    def __eq__(self, other):
+        if not isinstance(other, type(self)):
+            return NotImplemented
+        return self.name.lower() == other.name.lower()
+
+
+class DayHistory(object):
+    """A day history object. These have certain amounts of each FoodItem and a date."""
+    def __init__(self, date, foodsDict):
+        self.date = date
+        self.foodsDict = foodsDict
+        self.update_totals()
+
+    def update_totals(self):
+        self.caloriestotal = sum(self.foodsDict.get(item.name, 0) * item.calories for item in foodsSet)
+        self.proteintotal = sum(self.foodsDict.get(item.name, 0) * item.protein for item in foodsSet)
+        self.carbstotal = sum(self.foodsDict.get(item.name, 0) * item.carbs for item in foodsSet)
+        self.fatstotal = sum(self.foodsDict.get(item.name, 0) * item.fats for item in foodsSet)
+
+    def __hash__(self):
+        return hash((self.date))
+
+    def __eq__(self, other):
+        if not isinstance(other, type(self)):
+            return NotImplemented
+        return self.date == other.date
+
+
+foodsSet = set()
+datesSet = set()
+
+
+def addFood(fooditem):
+    "Adds food to foodsSet"
+    global foodsSet
+    if type(fooditem) is str:
+        foodList = ['name', 0, "unit", 0, 0, 0, 0]
+        i = 0
+        for match in re.finditer(r"\w+: (.+)", fooditem):
+            try:
+                foodList[i] = float(match.group(1))
+            except ValueError:
+                foodList[i] = match.group(1)
+            i += 1
+        foodsSet.add(
+            FoodItem(foodList[0], foodList[1], foodList[2], foodList[3], foodList[4], foodList[5], foodList[6]))
+    elif type(fooditem) is list:
+        foodsSet.add(
+            FoodItem(fooditem[0], fooditem[1], fooditem[2], fooditem[3], fooditem[4], fooditem[5], fooditem[6]))
+
+
+def findFoods(foodsListFile):
+    "Looks for foods in given file and adds to the foodsSet variable"
+    # read file given as argument
+    foodsListFile.seek(0, 0)
+    foodlist = foodsListFile.read()
+    for match in re.findall(r"(?s)Food: .+?(?=\n\n|$)", foodlist):
+        addFood(match)
+
+
+def ReadHistory(historyFile):
+    "Looks for history in given file and reads it"
+    # read file given as argument
+    historyFile.seek(0, 0)
+    history = historyFile.read()
+    for match in re.findall(r"(?s)Date: .+?(?=\n\n|$)", history):
+        addHistory(match)
+
+
+def printDate(datestr):
+    "Prints date information"
+    for x in datesSet:
+        if x.date == datestr:
+            date = x
+    print("Date: %s\nCalorie total: %s\nProtein total: %s\nCarbs total: %s\nFats total: %s\n\n" % (
+        date.date, date.caloriestotal, date.proteintotal, date.carbstotal, date.fatstotal))
+    if date.foodsDict:
+        print("Foods:")
+        for key, value in date.foodsDict.items():
+            fooditem = next((item for item in foodsSet if item.name.lower() == key.lower()), None)
+            if fooditem:
+                print(f"{value} {fooditem.name}")
+                print(f"{value * fooditem.calories} calories")
+                print(f"{value * fooditem.protein} protein")
+                print(f"{value * fooditem.carbs} carbs")
+                print(f"{value * fooditem.fats} fats")
+    else:
+        print("No food tracked for this day.")
+
+
+def addHistory(historyinstance):
+    "Parses history instance"
+    global datesSet
+    foodsDict = {}
+    date = (re.search(r"Date: (.+)", historyinstance)).group(1)
+    for consumedfood in re.finditer(r"(\S+) ([^\n]+)", re.search(r"(?s)(?<=Foods: \n)(.+)", historyinstance).group(1)):
+        foodsDict[consumedfood.group(2)] = float(consumedfood.group(1))
+    datesSet.add(DayHistory(date, foodsDict))
+
+
+def listFoods():
+    "Lists all food items"
+    global foodsSet
+    for x in foodsSet:
+        print("%s" % x.name)
+
+
+def TrackFood():
+    "Food tracker"
+    global datesSet
+    foodsDict = {}
+    trackdate = input("What day would you like to track?\n")
+    if trackdate == "today":
+        trackdate = str(time.localtime(time.time())[2]) + "-" + str(time.localtime(time.time())[1]) + "-" + str(
+            time.localtime(time.time())[0])
+    # Check if there is existing data for the selected day
+    existing_data = next((x for x in datesSet if x.date == trackdate), None)
+    if existing_data:
+        confirmation2 = input("Import previously tracked food? y/n\n")
+        if confirmation2 == "y":
+            foodsDict = existing_data.foodsDict
+            datesSet.remove(existing_data)
+
+    notDoneAdding = True
+    while notDoneAdding:
+        foodToAdd = input("What food would you like to add? (Type 'cancel' to cancel)\n").lower()
+        if foodToAdd == 'cancel':
+            break  # Exit the loop if the user wants to cancel
+        printedfood = False
+        matched_items = [item for item in foodsSet if foodToAdd in item.name.lower()]
+        if matched_items:
+            print("Found matching items:")
+            for idx, fooditem in enumerate(matched_items, start=1):
+                print(f"{idx}. {fooditem.name}")
+            selected_index = input("Enter the number of the food item you want to add, or enter '0' to cancel: ")
+            if selected_index == '0':
+                continue
+            try:
+                selected_index = int(selected_index) - 1
+                if 0 <= selected_index < len(matched_items):
+                    selected_food = matched_items[selected_index]
+                    print("Food: %s\nServing: %s %s\nCalories: %s\nProtein: %s\nCarbs: %s\nFats: %s\n" % (
+                        selected_food.name, selected_food.servings, selected_food.servingsunit, selected_food.calories,
+                        selected_food.protein, selected_food.carbs, selected_food.fats))
+                    printedfood = True
+                    confirmation = input("Confirm? y/n\n")
+                    if confirmation == "y":
+                        amount = float(input("How many %s?\n" % selected_food.servingsunit))
+                        foodsDict[selected_food.name] = foodsDict.get(selected_food.name, 0) + amount
+                    continue  # Go back to the starting menu
+            except ValueError:
+                pass  # Ignore if the input is not a valid number
+
+        if not printedfood:
+            print("Could not find that food in the database! Please add it first.")
+
+    # Calculate totals for the day
+    caloriestotal = sum(foodsDict.get(item.name, 0) * item.calories for item in foodsSet)
+    proteintotal = sum(foodsDict.get(item.name, 0) * item.protein for item in foodsSet)
+    carbstotal = sum(foodsDict.get(item.name, 0) * item.carbs for item in foodsSet)
+    fatstotal = sum(foodsDict.get(item.name, 0) * item.fats for item in foodsSet)
+
+    datesSet.add(DayHistory(trackdate, foodsDict))
+    for x in datesSet:
+        if x.date == trackdate:
+            currentdate = x
+            currentdate.caloriestotal = caloriestotal
+            currentdate.proteintotal = proteintotal
+            currentdate.carbstotal = carbstotal
+            currentdate.fatstotal = fatstotal
+    print("\nDone tracking. Totals:\n\nCalories: %s\nProtein: %s\nCarbs: %s\nFats: %s\n\n" % (
+        caloriestotal, proteintotal, carbstotal, fatstotal))
+
+
+foodsfile = codecs.open("Foods.txt", mode="a+")
+historyfile = codecs.open("History.txt", mode="a+")
+
+findFoods(foodsfile)
+ReadHistory(historyfile)
+
+while True:
+    userInput = input(
+        "\nWhat would you like to do?\n(1) Edit foods\n(2) Track food\n(3) View food\n(4) View history\n(5) List foods\n(6) Delete day of history\n(7) Exit program\n\n").lower()
+    if userInput == "1":
+        selectEditFood = input("Would you like to (1) add or (2) delete a food item?")
+        if selectEditFood == "1":
+            newfood = ["name", 0, 0, "unit", 0, 0, 0]
+            newfood[0] = input("\nFood name?\n")
+            newfood[1] = float(input("Servings?\n"))
+            newfood[2] = input("Servings unit?\n")
+            newfood[3] = float(input("Calories?\n"))
+            newfood[4] = float(input("Protein in g?\n"))
+            newfood[5] = float(input("Carbs in g?\n"))
+            newfood[6] = float(input("Fats in g?\n"))
+            addFood(newfood)
+        elif selectEditFood == "2":
+            foodToDelete = input("Which food item would you like to delete?")
+            for fooditem in foodsSet.copy():
+                if fooditem.name.lower() == foodToDelete.lower():
+                    foodsSet.remove(fooditem)
+    if userInput == "2":
+        TrackFood()
+        continue  # Skip to the next iteration of the loop after tracking food
+    if userInput == "3":
+        foodsearch = input("\nFood name?\n").lower()
+        printedfood = False
+        for fooditem in foodsSet:
+            if foodsearch in fooditem.name.lower():
+                print("\nFood: %s\nServing: %s %s\nCalories: %s\nProtein: %s\nCarbs: %s\nFats: %s\n" % (
+                    fooditem.name, fooditem.servings, fooditem.servingsunit, fooditem.calories, fooditem.protein,
+                    fooditem.carbs, fooditem.fats))
+                printedfood = True
+        if not printedfood:
+            print("Could not find that food in the database! Please add it first.")
+    if userInput == "4":
+        datesearch = input("\nWhat day?\n")
+        printedday = False
+        for date in datesSet:
+            if datesearch == date.date:
+                printDate(date.date)
+                printedday = True
+        if not printedday:
+            print("Could not find that day in the database! Please add it first.")
+    if userInput == "5":
+        listFoods()
+    if userInput == "6":
+        day_to_delete = input("\nWhich day of history would you like to delete? Enter the date (format: DD-MM-YYYY)\n")
+        dateset_copy = datesSet.copy()  # Avoid modifying a set while iterating over it
+        for date_entry in dateset_copy:
+            if date_entry.date == day_to_delete:
+                datesSet.remove(date_entry)
+        # Rewrite history file
+        with codecs.open("History.txt", mode="w") as historyfile:
+            for date_entry in datesSet:
+                historyfile.write("Date: %s\nFoods: \n" % date_entry.date)
+                for food_name, amount in date_entry.foodsDict.items():
+                    historyfile.write("%s %s\n" % (amount, food_name))
+                historyfile.write("\n")
+        print("Day of history deleted successfully!")
+    if userInput == "7":
+        break
+
+# Write seed links file
+with codecs.open("Foods.txt", mode="w") as foodsfile:
+    for item in foodsSet:
+        foodsfile.write("Food: %s\nServing: %s\nUnit: %s\nCalories: %s\nProtein: %s\nCarbs: %s\nFats: %s\n\n" % (
+            item.name, item.servings, item.servingsunit, item.calories, item.protein, item.carbs, item.fats))
