@@ -7,21 +7,28 @@ import subprocess
 from docx import Document
 from odf import text, teletype
 from odf.opendocument import load as load_odf
+from odf.table import TableCell  # Correct import for table cell handling
 from striprtf.striprtf import rtf_to_text
 
 def read_text_document(file_path):
-    """Determine type and read text from DOCX, ODT, and RTF files."""
+    """Determine type and read text from DOCX, ODT, ODS, OTT, RTF, and TXT files."""
     extension = os.path.splitext(file_path)[1].lower()
     if extension == '.docx':
         doc = Document(file_path)
         return '\n'.join(para.text for para in doc.paragraphs)
-    elif extension in ['.odt', '.ott']:
+    elif extension in ['.odt', '.ott', '.ods']:
         doc = load_odf(file_path)
-        all_texts = doc.getElementsByType(text.P)
-        return "\n".join(teletype.extractText(t) for t in all_texts)
+        if extension == '.ods':
+            all_texts = doc.getElementsByType(TableCell)  # Correct class for table cell
+        else:
+            all_texts = doc.getElementsByType(text.P)
+        return "\n".join(teletype.extractText(t) for t in all_texts if t)
     elif extension == '.rtf':
         with open(file_path, 'r') as file:
             return rtf_to_text(file.read())
+    elif extension == '.txt':
+        with open(file_path, 'r', encoding='utf-8') as file:
+            return file.read()
     return ""
 
 def convert_to_rtf(input_path, output_path):
@@ -38,7 +45,7 @@ def convert_to_rtf(input_path, output_path):
 def determine_file_type(file_path):
     if file_path.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif')):
         return 'image'
-    elif file_path.lower().endswith(('.docx', '.odt', '.ott', '.rtf', '.txt', '.doc')):
+    elif file_path.lower().endswith(('.docx', '.odt', '.ott', '.rtf', '.txt', '.doc', '.ods')):
         return 'text'
     return 'unsupported'
 
