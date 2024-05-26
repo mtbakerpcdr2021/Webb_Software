@@ -1,0 +1,185 @@
+import tkinter as tk
+from tkinter import filedialog, ttk, Listbox, messagebox
+from fpdf import FPDF
+from PIL import Image, UnidentifiedImageError
+import os
+import subprocess
+from docx import Document
+from odf import text, teletype
+from odf.opendocument import load as load_odf
+from striprtf.striprtf import rtf_to_text
+
+def read_text_document(file_path):
+    """Determine type and read text from DOCX, ODT, and RTF files."""
+    extension = os.path.splitext(file_path)[1].lower()
+    if extension == '.docx':
+        doc = Document(file_path)
+        return '\n'.join(para.text for para in doc.paragraphs)
+    elif extension in ['.odt', '.ott']:
+        doc = load_odf(file_path)
+        all_texts = doc.getElementsByType(text.P)
+        return "\n".join(teletype.extractText(t) for t in all_texts)
+    elif extension == '.rtf':
+        with open(file_path, 'r') as file:
+            return rtf_to_text(file.read())
+    return ""
+
+def convert_to_rtf(input_path, output_path):
+    """Convert documents to RTF format using LibreOffice for supported types."""
+    try:
+        libreoffice_path = r"C:\Program Files\LibreOffice\program\soffice.exe"
+        cmd = [libreoffice_path, "--headless", "--convert-to", "rtf", "--outdir", output_path, input_path]
+        subprocess.run(cmd, check=True)
+        return os.path.join(output_path, os.path.splitext(os.path.basename(input_path))[0] + '.rtf')
+    except subprocess.CalledProcessError as e:
+        print(f"Failed to convert {input_path}. Error: {e}")
+        return None
+
+def determine_file_type(file_path):
+    if file_path.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif')):
+        return 'image'
+    elif file_path.lower().endswith(('.docx', '.odt', '.ott', '.rtf', '.txt', '.doc')):
+        return 'text'
+    return 'unsupported'
+
+class PDFConverterApp:
+    def __init__(self, root):
+        self.root = root
+        root.title("Batch PDF Converter")
+        root.geometry("900x500")
+
+        root.columnconfigure(0, weight=1)
+        root.rowconfigure(0, weight=1)
+
+        self.file_type = tk.StringVar(value='Mix Files to PDF')
+        self.option_menu = ttk.OptionMenu(root, self.file_type, 'Mix Files to PDF', 'Images to PDF', 'Texts to PDF', 'Mix Files to PDF')
+        self.option_menu.grid(row=0, column=0, padx=10, pady=10, sticky='ew')
+
+        self.merge_files = tk.BooleanVar(value=True)
+        self.merge_toggle = ttk.Checkbutton(root, text="Merge into single PDF", variable=self.merge_files, command=self.toggle_merge)
+        self.merge_toggle.grid(row=1, column=0, padx=10, pady=10, sticky='ew')
+
+        self.listbox = Listbox(root, selectmode='single', height=6)
+        self.listbox.grid(row=2, column=0, padx=10, pady=10, sticky='ew')
+
+        self.up_button = ttk.Button(root, text="Move Up", command=self.move_up)
+        self.up_button.grid(row=3, column=0, padx=10, pady=5, sticky='ew')
+
+        self.down_button = ttk.Button(root, text="Move Down", command=self.move_down)
+        self.down_button.grid(row=4, column=0, padx=10, pady=5, sticky='ew')
+
+        self.browse_button = ttk.Button(root, text="Browse Input Files", command=self.browse_input)
+        self.browse_button.grid(row=5, column=0, padx=10, pady=10, sticky='ew')
+
+        self.output_button = ttk.Button(root, text="Set Output PDF", command=self.browse_output)
+        self.output_button.grid(row=6, column=0, padx=10, pady=10, sticky='ew')
+
+        self.convert_button = ttk.Button(root, text="Convert", command=self.convert)
+        self.convert_button.grid(row=7, column=0, padx=10, pady=10, sticky='ew')
+
+        self.input_paths = []
+        self.output_path = ''
+
+    def toggle_merge(self):
+        state = tk.NORMAL if self.merge_files.get() else tk.DISABLED
+        self.up_button.config(state=state)
+        self.down_button.config(state=state)
+
+    def browse_input(self):
+        filepaths = filedialog.askopenfilenames()
+        if filepaths:
+            self.input_paths = list(filepaths)
+            self.update_listbox()
+
+    def browse_output(self):
+        self.output_path = filedialog.asksaveasfilename(defaultextension=".pdf")
+        print("Selected output:", self.output_path)
+
+    def update_listbox(self):
+        self.listbox.delete(0, tk.END)
+        for path in self.input_paths:
+            self.listbox.insert(tk.END, os.path.basename(path))
+
+    def move_up(self):
+        pos = self.listbox.curselection()
+        if pos and pos[0] > 0:
+            idx = pos[0]
+            self.input_paths[idx], self.input_paths[idx - 1] = self.input_paths[idx - 1], self.input_paths[idx]
+            self.update_listbox()
+            self.listbox.selection_set(idx - 1)
+
+    def move_down(self):
+        pos = self.listbox.curselection()
+        if pos and pos[0] < len(self.input_paths) - 1:
+            idx = pos[0]
+            self.input_paths[idx], self.input_paths[idx + 1] = self.input_paths[idx + 1], self.input_paths[idx]
+            self.update_listbox()
+            self.listbox.selection_set(idx + 1)
+
+    def convert(self):
+        if self.merge_files.get():
+            self.convert_mixed_files_to_pdf(self.input_paths, self.output_path)
+        else:
+            self.convert_files_separately(self.input_paths, self.output_path)
+
+    def convert_images_to_pdf(self, image_paths, output_path):
+        pdf = FPDF()
+        for image_path in image_paths:
+            try:
+                img = Image.open(image_path)
+                width, height = img.size
+                pdf.add_page()
+                pdf.image(image_path, 0, 0, 210, 297)
+            except UnidentifiedImageError:
+                print(f"Skipped non-image file: {image_path}")
+        pdf.output(output_path)
+
+    def convert_texts_to_pdf(self, text_paths, output_path):
+        pdf = FPDF()
+        pdf.set_font("Arial", size=12)
+        pdf.add_page()
+        for text_path in text_paths:
+            output_dir = os.path.dirname(output_path)
+            if not text_path.endswith('.rtf'):
+                text_path = convert_to_rtf(text_path, output_dir)
+            if text_path:
+                text = read_text_document(text_path)
+                pdf.multi_cell(0, 10, text)
+        pdf.output(output_path)
+
+    def convert_mixed_files_to_pdf(self, paths, output_path):
+        pdf = FPDF()
+        pdf.set_font("Arial", size=12)
+        for path in paths:
+            file_type = determine_file_type(path)
+            if file_type == 'image':
+                try:
+                    img = Image.open(path)
+                    pdf.add_page()
+                    pdf.image(path, 0, 0, 210, 297)
+                except UnidentifiedImageError:
+                    print(f"Skipped non-image file: {path}")
+            elif file_type == 'text':
+                output_dir = os.path.dirname(output_path)
+                if not path.endswith('.rtf'):
+                    path = convert_to_rtf(path, output_dir)
+                if path:
+                    text = read_text_document(path)
+                    pdf.add_page()
+                    pdf.multi_cell(0, 10, text)
+        pdf.output(output_path)
+
+    def convert_files_separately(self, paths, output_path):
+        root, ext = os.path.splitext(output_path)
+        for i, path in enumerate(paths):
+            unique_output = f"{root}_{i + 1}{ext}"
+            file_type = determine_file_type(path)
+            if file_type == 'image':
+                self.convert_images_to_pdf([path], unique_output)
+            elif file_type == 'text':
+                self.convert_texts_to_pdf([path], unique_output)
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = PDFConverterApp(root)
+    root.mainloop()
