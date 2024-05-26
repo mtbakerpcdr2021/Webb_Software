@@ -1,0 +1,127 @@
+import tkinter as tk
+from tkinter import filedialog, ttk, Listbox
+from fpdf import FPDF
+from PIL import Image
+import os
+
+class PDFConverterApp:
+    def __init__(self, root):
+        self.root = root
+        root.title("Batch PDF Converter")
+
+       
+        root.geometry("900x500")  # You can adjust the height as necessary
+
+        root.columnconfigure(0, weight=1)
+        root.rowconfigure(0, weight=1)
+
+        self.file_type = tk.StringVar(value='Images to PDF')
+        self.option_menu = ttk.OptionMenu(root, self.file_type, 'Images to PDF', 'Images to PDF', 'Texts to PDF')
+        self.option_menu.grid(row=0, column=0, padx=10, pady=10, sticky='ew')
+
+        self.merge_files = tk.BooleanVar(value=True)
+        self.merge_toggle = ttk.Checkbutton(root, text="Merge into single PDF", variable=self.merge_files, command=self.toggle_merge)
+        self.merge_toggle.grid(row=1, column=0, padx=10, pady=10, sticky='ew')
+
+        self.listbox = Listbox(root, selectmode='single', height=6)
+        self.listbox.grid(row=2, column=0, padx=10, pady=10, sticky='ew')
+
+        self.up_button = ttk.Button(root, text="Move Up", command=self.move_up)
+        self.up_button.grid(row=3, column=0, padx=10, pady=5, sticky='ew')
+
+        self.down_button = ttk.Button(root, text="Move Down", command=self.move_down)
+        self.down_button.grid(row=4, column=0, padx=10, pady=5, sticky='ew')
+
+        self.browse_button = ttk.Button(root, text="Browse Input Files", command=self.browse_input)
+        self.browse_button.grid(row=5, column=0, padx=10, pady=10, sticky='ew')
+
+        self.output_button = ttk.Button(root, text="Set Output PDF", command=self.browse_output)
+        self.output_button.grid(row=6, column=0, padx=10, pady=10, sticky='ew')
+
+        self.convert_button = ttk.Button(root, text="Convert", command=self.convert)
+        self.convert_button.grid(row=7, column=0, padx=10, pady=10, sticky='ew')
+
+        self.input_paths = []
+        self.output_path = ''
+
+    def toggle_merge(self):
+        self.up_button['state'] = tk.NORMAL if self.merge_files.get() else tk.DISABLED
+        self.down_button['state'] = tk.NORMAL if self.merge_files.get() else tk.DISABLED
+
+    def browse_input(self):
+        filepaths = filedialog.askopenfilenames()
+        if filepaths:
+            self.input_paths = list(filepaths)
+            self.update_listbox()
+
+    def browse_output(self):
+        self.output_path = filedialog.asksaveasfilename(defaultextension=".pdf")
+        print("Selected output:", self.output_path)
+
+    def update_listbox(self):
+        self.listbox.delete(0, tk.END)
+        for path in self.input_paths:
+            self.listbox.insert(tk.END, os.path.basename(path))
+
+    def move_up(self):
+        pos = self.listbox.curselection()
+        if pos and pos[0] > 0:
+            idx = pos[0]
+            self.input_paths[idx], self.input_paths[idx - 1] = self.input_paths[idx - 1], self.input_paths[idx]
+            self.update_listbox()
+            self.listbox.selection_set(idx - 1)
+
+    def move_down(self):
+        pos = self.listbox.curselection()
+        if pos and pos[0] < len(self.input_paths) - 1:
+            idx = pos[0]
+            self.input_paths[idx], self.input_paths[idx + 1] = self.input_paths[idx + 1], self.input_paths[idx]
+            self.update_listbox()
+            self.listbox.selection_set(idx + 1)
+
+    def convert(self):
+        file_type = self.file_type.get()
+        merge = self.merge_files.get()
+        if file_type == 'Images to PDF':
+            if merge:
+                convert_images_to_pdf(self.input_paths, self.output_path)
+            else:
+                convert_files_separately(self.input_paths, self.output_path, 'image')
+        elif file_type == 'Texts to PDF':
+            if merge:
+                convert_texts_to_pdf(self.input_paths, self.output_path)
+            else:
+                convert_files_separately(self.input_paths, self.output_path, 'text')
+
+def convert_images_to_pdf(image_paths, output_path):
+    pdf = FPDF()
+    for image_path in image_paths:
+        img = Image.open(image_path)
+        width, height = img.size
+        pdf.add_page()
+        pdf.image(image_path, 0, 0, 210, 297)  # A4 size in mm for every image
+    pdf.output(output_path)
+
+def convert_texts_to_pdf(text_paths, output_path):
+    pdf = FPDF()
+    pdf.set_font("Arial", size=12)
+    for text_path in text_paths:
+        pdf.add_page()
+        with open(text_path, 'r') as file:
+            for line in file:
+                pdf.cell(200, 10, txt=line, ln=True)
+    pdf.output(output_path)
+
+def convert_files_separately(paths, output_path, file_type):
+    root, ext = os.path.splitext(output_path)
+    for i, path in enumerate(paths):
+        unique_output = f"{root}_{i + 1}{ext}"
+        if file_type == 'image':
+            convert_images_to_pdf([path], unique_output)
+        elif file_type == 'text':
+            convert_texts_to_pdf([path], unique_output)
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = PDFConverterApp(root)
+    root.mainloop()
