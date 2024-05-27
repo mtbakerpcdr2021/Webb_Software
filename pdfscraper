@@ -1,0 +1,157 @@
+import tkinter as tk
+from tkinter import messagebox
+from threading import Thread, Event
+import requests
+from bs4 import BeautifulSoup
+from urllib.parse import urljoin, urlparse
+import os
+import queue
+import time
+
+def is_valid(url, base_domain):
+    parsed = urlparse(url)
+    return bool(parsed.netloc) and bool(parsed.scheme) and parsed.netloc == base_domain
+
+def should_visit(url, base_url):
+    return url.startswith(base_url)
+
+def log_error(message):
+    with open('error_log.txt', 'a') as file:
+        file.write(f"{message}\n")
+
+def download_pdf(url, folder, message_queue, urls_visited, active_threads):
+    try:
+        response = requests.get(url, timeout=30, stream=True)
+        if response.headers.get('Content-Type', '').lower() != 'application/pdf':
+            message_queue.put(f"Skipped non-PDF URL: {url}")
+            log_error(f"Skipped non-PDF URL: {url}")
+            return
+
+        response.raise_for_status()
+        pdf_filename = os.path.join(folder, os.path.basename(url))
+        with open(pdf_filename, 'wb') as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                f.write(chunk)
+        message_queue.put(f"Downloaded {pdf_filename}. URLs visited: {urls_visited}")
+    except requests.RequestException as e:
+        message_queue.put(f"Failed to download {url}: {str(e)}")
+        log_error(f"Failed to download {url}: {str(e)}")
+    except Exception as e:
+        message_queue.put(f"Error downloading {url}: {str(e)}")
+        log_error(f"Error downloading {url}: {str(e)}")
+    finally:
+        active_threads[0] -= 1
+        check_if_done(active_threads, message_queue)
+
+def download_pdfs(url, download_folder, visited, base_url, message_queue, stop_event, active_threads):
+    if not os.path.exists(download_folder):
+        os.makedirs(download_folder)
+    if url in visited:
+        return
+    visited.add(url)
+    message_queue.put(f"Checking {url}. URLs visited: {len(visited)}")
+
+    try:
+        response = requests.get(url, timeout=30)
+        response.raise_for_status()
+        soup = BeautifulSoup(response.content, 'html.parser')
+        links = soup.find_all('a', href=True)
+
+        for link in links:
+            if stop_event.is_set():
+                return
+            href = link['href']
+            full_url = urljoin(url, href)
+
+            if full_url.endswith('.pdf') and is_valid(full_url, urlparse(base_url).netloc) and full_url not in visited:
+                active_threads[0] += 1
+                thread = Thread(target=download_pdf, args=(full_url, download_folder, message_queue, len(visited), active_threads))
+                thread.daemon = True  # Correct way to set threads as daemon
+                thread.start()
+            elif is_valid(full_url, urlparse(base_url).netloc) and should_visit(full_url, base_url) and full_url not in visited:
+                download_pdfs(full_url, download_folder, visited, base_url, message_queue, stop_event, active_threads)
+    except requests.exceptions.RequestException as e:
+        message_queue.put(f"Failed to process {url}: {str(e)}")
+        log_error(f"Failed to process {url}: {str(e)}")
+
+def start_downloading():
+    url = url_entry.get()
+    folder = folder_entry.get()
+    visited = set()
+    active_threads = [0]
+    global start_time
+    start_time = time.time()
+    stop_event.clear()
+    download_button.config(state=tk.DISABLED)
+    progress_label.config(text="Initializing download...")
+    main_thread = Thread(target=download_pdfs, args=(url, folder, visited, url, message_queue, stop_event, active_threads))
+    main_thread.daemon = True
+    main_thread.start()
+
+def check_if_done(active_threads, message_queue):
+    if active_threads[0] == 0:
+        message_queue.put("All downloads complete.")
+        download_button.config(state=tk.NORMAL)
+        global start_time
+        elapsed_time = int(time.time() - start_time)
+        time_label.config(text=f"Total run time: {elapsed_time // 3600:02d}:{(elapsed_time % 3600) // 60:02d}:{elapsed_time % 60:02d}")
+
+def update_gui_progress():
+    try:
+        while True:
+            message = message_queue.get_nowait()
+            progress_label.config(text=message)
+    except queue.Empty:
+        pass
+    global start_time
+    if 'start_time' in globals():
+        elapsed_time = int(time.time() - start_time)
+        time_label.config(text=f"Running time: {elapsed_time // 3600:02d}:{(elapsed_time % 3600) // 60:02d}:{elapsed_time % 60:02d}")
+    global update_id
+    update_id = app.after(1000, update_gui_progress)
+
+def on_closing():
+    if messagebox.askokcancel("Quit", "Do you want to stop the download and quit?"):
+        stop_event.set()
+        app.destroy()
+
+def minimize_window():
+    app.iconify()
+
+app = tk.Tk()
+app.title("PDF Downloader")
+app.attributes('-fullscreen', True)
+app.configure(bg='#4B0082')  # Deeper shade of purple
+text_color = 'gold'
+
+message_queue = queue.Queue()
+stop_event = Event()
+
+tk.Label(app, text="URL:", bg='#4B0082', fg=text_color).pack()
+url_entry = tk.Entry(app, width=50)
+url_entry.pack()
+url_entry.insert(0, 'https://wikileaks.org/vault7/')
+
+tk.Label(app, text="Download Folder:", bg='#4B0082', fg=text_color).pack()
+folder_entry = tk.Entry(app, width=50)
+folder_entry.pack()
+folder_entry.insert(0, 'downloaded_pdfs')
+
+download_button = tk.Button(app, text="Download PDFs", command=start_downloading)
+download_button.pack()
+
+progress_label = tk.Label(app, text="Enter URL and folder, then click download.", bg='#4B0082', fg=text_color)
+progress_label.pack()
+
+time_label = tk.Label(app, text="Running time: 00:00:00", bg='#4B0082', fg=text_color)
+time_label.pack()
+
+minimize_button = tk.Button(app, text="Minimize", command=minimize_window)
+minimize_button.pack()
+
+quit_button = tk.Button(app, text="Quit", command=lambda: app.destroy())
+quit_button.pack()
+
+app.protocol("WM_DELETE_WINDOW", on_closing)
+update_id = app.after(1000, update_gui_progress)
+app.mainloop()
