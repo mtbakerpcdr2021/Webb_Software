@@ -84,13 +84,6 @@ def add_text_to_pdf():
         messagebox.showinfo("Success", f"Text added to {output_file}")
 
 
-
-
-import tkinter as tk
-from tkinter import filedialog, simpledialog, messagebox, scrolledtext
-import fitz  # PyMuPDF
-import os
-
 def extract_and_edit_text():
     input_file = filedialog.askopenfilename(title="Select PDF to edit text", filetypes=[("PDF Files", "*.pdf")])
     if not input_file:
